@@ -1,0 +1,31 @@
+[Unit]
+Description=Dummy Service Application
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+Group={{ app_user }}
+WorkingDirectory={{ app_dir }}
+
+# Pokretanje aplikacije sa parametrima iz README.md
+ExecStart=/usr/bin/java -jar {{ app_dir }}/{{ jar_file }} {{ log_location }} {{ number_of_agents }}
+
+# Restart politika
+Restart=on-failure
+RestartSec=10
+
+# Logovanje
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={{ app_name }}
+
+# Sigurnosne postavke
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

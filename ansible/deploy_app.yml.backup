@@ -1,0 +1,117 @@
+    number_of_agents: 500
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install OpenJDK 17
+      apt:
+        name: openjdk-17-jdk
+        state: present
+
+    - name: Verify Java installation
+      command: java -version
+      register: java_version
+      changed_when: false
+
+    - name: Display Java version
+      debug:
+        var: java_version.stderr_lines
+
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        system: yes
+        shell: /bin/bash
+        createhome: yes
+
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Create log directory
+      file:
+        path: "{{ log_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Copy JAR file to server
+      copy:
+        src: "../{{ jar_file }}"
+        dest: "{{ app_dir }}/{{ jar_file }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+
+    - name: Create systemd service file
+      template:
+        src: dummyapp.service.j2
+        dest: /etc/systemd/system/{{ app_name }}.service
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Enable and start application service
+      systemd:
+        name: "{{ app_name }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Wait for application to start
+      wait_for:
+        path: "{{ log_location }}"
+        timeout: 60
+
+    - name: Check if application is running
+      systemd:
+        name: "{{ app_name }}"
+        state: started
+      register: service_status
+
+    - name: Display service status
+      debug:
+        msg: "Application service is {{ service_status.status.ActiveState }}"
+
+    - name: Install UFW firewall
+      apt:
+        name: ufw
+        state: present
+
+    - name: Configure UFW - allow SSH
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: Configure UFW - allow app port
+      ufw:
+        rule: allow
+        port: '8080'
+        proto: tcp
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+
+    - name: Verify log file exists and has content
+      command: "tail -n 10 {{ log_location }}"
+      register: log_output
+      changed_when: false
+      failed_when: false
+
+    - name: Display recent logs
+      debug:
+        var: log_output.stdout_lines
+      when: log_output.rc == 0
+
+  handlers:
+    - name: Reload systemd
+      systemd:

@@ -1,0 +1,105 @@
+---
+- name: Deploy Java Application
+  hosts: app
+  become: yes
+  
+  vars:
+    app_name: "dummyapp"
+    app_user: "appuser"
+    app_dir: "/opt/{{ app_name }}"
+    log_dir: "/var/log/{{ app_name }}"
+    jar_file: "project2_dummy_service-1.0-SNAPSHOT.jar"
+    log_location: "/var/log/{{ app_name }}/app.log"
+    number_of_agents: 500
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Java 17
+      apt:
+        name: openjdk-17-jre
+        state: present
+
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        system: yes
+        create_home: no
+        shell: /bin/false
+
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Create log directory
+      file:
+        path: "{{ log_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Copy JAR file
+      copy:
+        src: "../project2_dummy_service-1.0-SNAPSHOT.jar"
+        dest: "{{ app_dir }}/{{ jar_file }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+
+    - name: Create systemd service file
+      template:
+        src: dummyapp.service.j2
+        dest: /etc/systemd/system/dummyapp.service
+        mode: '0644'
+      notify: restart dummyapp
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start dummyapp service
+      systemd:
+        name: dummyapp
+        enabled: yes
+        state: started
+
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: Allow HTTP
+      ufw:
+        rule: allow
+        port: '80'
+        proto: tcp
+
+    - name: Allow app port
+      ufw:
+        rule: allow
+        port: '8080'
+        proto: tcp
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+
+  handlers:
+    - name: restart dummyapp
+      systemd:
+        name: dummyapp
+        state: restarted
